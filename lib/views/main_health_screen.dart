@@ -3,8 +3,10 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../viewmodels/health_viewmodel.dart';
 import '../models/health_entry.dart';
+import 'lab_details_screen.dart';
+import 'scan_report_screen.dart';
 
-/// Слой VIEW: декларативный пользовательский интерфейс главного экрана
+/// Слой VIEW: главный экран дневника и список исследований
 class MainHealthScreen extends StatelessWidget {
   final HealthViewModel viewModel;
 
@@ -12,7 +14,6 @@ class MainHealthScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ListenableBuilder слушает ViewModel и перерисовывает экран только при изменениях
     return ListenableBuilder(
       listenable: viewModel,
       builder: (context, _) {
@@ -22,28 +23,49 @@ class MainHealthScreen extends StatelessWidget {
             centerTitle: true,
             backgroundColor: Theme.of(context).colorScheme.inversePrimary,
           ),
+          // Кнопка быстрого перехода к сканированию бланка (Камера)
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ScanReportScreen(viewModel: viewModel),
+                ),
+              );
+            },
+            icon: const Icon(Icons.qr_code_scanner_rounded),
+            label: const Text('Скан бланка'),
+            backgroundColor: Colors.teal,
+            foregroundColor: Colors.white,
+          ),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. Интерактивный ввод симптомов
+                // 1. Блок ввода симптомов
                 _buildSymptomInputCard(context),
 
                 const SizedBox(height: 20),
 
-                // 2. График динамики показателей
+                // 2. Блок графика показателей
                 _buildChartCard(),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
-                // 3. Хронологическая лента здоровья
+                // 3. НОВЫЙ БЛОК: Лабораторные исследования (Лабораторная работа №2)
+                _buildLabReportsSection(context),
+
+                const SizedBox(height: 24),
+
+                // 4. Хронологическая лента самочувствия
                 const Text(
                   'Хроника самочувствия',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 10),
                 _buildTimelineList(viewModel.history),
+                const SizedBox(height: 60), // Отступ под FAB
               ],
             ),
           ),
@@ -52,7 +74,109 @@ class MainHealthScreen extends StatelessWidget {
     );
   }
 
-  // Виджет карточки ввода симптомов
+  // Раздел карточек исследований
+  Widget _buildLabReportsSection(BuildContext context) {
+    final dateFormat = DateFormat('dd.MM.yyyy');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Лабораторные анализы',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            Text(
+              'Всего: ${viewModel.labReports.length}',
+              style: const TextStyle(
+                color: Colors.teal,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: viewModel.labReports.length,
+          itemBuilder: (context, index) {
+            final report = viewModel.labReports[index];
+            final hasAbnormal = report.abnormalCount > 0;
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(
+                  color:
+                      hasAbnormal
+                          ? Colors.red.withOpacity(0.4)
+                          : Colors.transparent,
+                  width: 1,
+                ),
+              ),
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                leading: CircleAvatar(
+                  backgroundColor:
+                      hasAbnormal ? Colors.red[50] : Colors.teal[50],
+                  child: Icon(
+                    Icons.biotech_rounded,
+                    color: hasAbnormal ? Colors.red : Colors.teal,
+                  ),
+                ),
+                title: Text(
+                  report.title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 4),
+                    Text(
+                      '${report.laboratory} • ${dateFormat.format(report.date)}',
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      hasAbnormal
+                          ? '⚠️ Отклонений от нормы: ${report.abnormalCount}'
+                          : '✓ Все показатели в норме',
+                      style: TextStyle(
+                        color:
+                            hasAbnormal ? Colors.red[700] : Colors.green[700],
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                onTap: () {
+                  // Переход на детальный экран карточки исследования
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => LabDetailsScreen(report: report),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
   Widget _buildSymptomInputCard(BuildContext context) {
     return Card(
       elevation: 2,
@@ -73,11 +197,8 @@ class MainHealthScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            const Text('Выберите текущие симптомы:'),
-            const SizedBox(height: 8),
             Wrap(
               spacing: 8.0,
-              runSpacing: 4.0,
               children:
                   viewModel.availableSymptoms.map((symptom) {
                     final isSelected = viewModel.selectedSymptoms.contains(
@@ -90,7 +211,7 @@ class MainHealthScreen extends StatelessWidget {
                     );
                   }).toList(),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Text(
               'Тяжесть симптомов: ${viewModel.currentSeverity.round()} из 10',
             ),
@@ -99,7 +220,6 @@ class MainHealthScreen extends StatelessWidget {
               min: 1,
               max: 10,
               divisions: 9,
-              label: viewModel.currentSeverity.round().toString(),
               activeColor: Colors.teal,
               onChanged: (val) => viewModel.updateSeverity(val),
             ),
@@ -109,7 +229,6 @@ class MainHealthScreen extends StatelessWidget {
               min: 50,
               max: 140,
               divisions: 90,
-              label: viewModel.currentPulse.round().toString(),
               activeColor: Colors.redAccent,
               onChanged: (val) => viewModel.updatePulse(val),
             ),
@@ -122,7 +241,6 @@ class MainHealthScreen extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Запись успешно добавлена в дневник!'),
-                      behavior: SnackBarBehavior.floating,
                     ),
                   );
                 },
@@ -143,7 +261,6 @@ class MainHealthScreen extends StatelessWidget {
     );
   }
 
-  // Виджет графика пульса
   Widget _buildChartCard() {
     return Card(
       elevation: 2,
@@ -209,7 +326,6 @@ class MainHealthScreen extends StatelessWidget {
     );
   }
 
-  // Виджет хронологической ленты
   Widget _buildTimelineList(List<HealthEntry> history) {
     if (history.isEmpty) {
       return const Center(child: Text('Записей пока нет'));
@@ -251,10 +367,7 @@ class MainHealthScreen extends StatelessWidget {
                 if (entry.symptoms.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 4.0),
-                    child: Text(
-                      'Симптомы: ${entry.symptoms.join(", ")}',
-                      style: const TextStyle(color: Colors.black87),
-                    ),
+                    child: Text('Симптомы: ${entry.symptoms.join(", ")}'),
                   ),
               ],
             ),
