@@ -1,9 +1,13 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import '../viewmodels/health_viewmodel.dart';
 
-/// Слой VIEW: модуль сканирования печатного бланка анализов
+import '../services/ocr_parser_service.dart';
+import '../viewmodels/health_viewmodel.dart';
+import 'lab_details_screen.dart';
+
+/// Слой VIEW: сканирование печатного лабораторного бланка камерой/из галереи.
 class ScanReportScreen extends StatefulWidget {
   final HealthViewModel viewModel;
 
@@ -16,146 +20,187 @@ class ScanReportScreen extends StatefulWidget {
 class _ScanReportScreenState extends State<ScanReportScreen> {
   File? _scannedImage;
   bool _isProcessing = false;
+
   final ImagePicker _picker = ImagePicker();
+  final OcrParserService _ocrService = OcrParserService();
 
-  // Захват изображения с камеры
   Future<void> _captureFromCamera() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.camera);
+    if (_isProcessing) return;
+
+    final pickedFile = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 100,
+      maxWidth: 3000,
+      maxHeight: 4000,
+    );
+
     if (pickedFile != null) {
-      _processScannedDocument(File(pickedFile.path), isCamera: true);
+      await _processImageWithOcr(File(pickedFile.path));
     }
   }
 
-  // Загрузка фото из галереи
   Future<void> _pickFromGallery() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+    if (_isProcessing) return;
+
+    final pickedFile = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 100,
+    );
+
     if (pickedFile != null) {
-      _processScannedDocument(File(pickedFile.path), isCamera: false);
+      await _processImageWithOcr(File(pickedFile.path));
     }
   }
 
-  // Обработка бланка (автоматическое извлечение данных)
-  void _processScannedDocument(
-    File? imageFile, {
-    required bool isCamera,
-    String? mockType,
-  }) {
+  Future<void> _processImageWithOcr(File imageFile) async {
     setState(() {
       _scannedImage = imageFile;
       _isProcessing = true;
     });
 
-    // Имитация оптического распознавания текста (OCR)
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
+    try {
+      final parsedReport = await _ocrService.processImage(imageFile);
 
-      widget.viewModel.addScannedReport(
-        type: mockType ?? (isCamera ? 'Камера (ОАК)' : 'Галерея (Биохимия)'),
-      );
+      // ЛР №4: после OCR данные сверяются с Realm, сохраняются в SQLite
+      // и публикуются в реактивный поток вместе с активностью.
+      final processedReport =
+          await widget.viewModel.processScannedReport(parsedReport);
+
+      if (!mounted) return;
 
       setState(() {
         _isProcessing = false;
       });
 
-      showDialog(
+      await showDialog<void>(
         context: context,
-        builder:
-            (ctx) => AlertDialog(
-              title: const Text('Бланк успешно распознан!'),
-              content: const Text(
-                'Таблица маркеров оцифрована. Показатели сопоставлены с медицинскими нормами и сохранены в дневник.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(ctx).pop(); // закрываем диалог
-                    Navigator.of(
-                      context,
-                    ).pop(); // возвращаемся на главный экран
-                  },
-                  child: const Text('Перейти к анализам'),
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Бланк распознан'),
+          content: Text(
+            'Исследование: ${processedReport.title}\n'
+            'Лаборатория: ${processedReport.laboratory}\n'
+            'Распознано показателей: ${processedReport.markers.length}\n'
+            'Сверено с Realm: ${widget.viewModel.lastMatchedReferenceCount}\n'
+            'Отклонений от нормы: ${processedReport.abnormalCount}\n'
+            'Реактивный поток: ${widget.viewModel.pipelineStatus}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (_) => LabDetailsScreen(report: processedReport),
+                  ),
+                );
+              },
+              child: const Text('Открыть карточку'),
+            ),
+          ],
+        ),
+      );
+    } on OcrParsingException catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isProcessing = false;
+      });
+
+      await _showRecognitionError(e.message);
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _isProcessing = false;
+      });
+
+      await _showRecognitionError(
+        'Во время OCR произошла ошибка: $e',
+      );
+    }
+  }
+
+  Future<void> _showRecognitionError(String message) async {
+    final raw = _ocrService.lastRecognizedText.trim();
+    final preview = raw.isEmpty
+        ? ''
+        : raw.length > 450
+            ? '${raw.substring(0, 450)}…'
+            : raw;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Не удалось распознать бланк'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(message),
+              if (preview.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                const Text(
+                  'OCR при этом прочитал:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                SelectableText(
+                  preview,
+                  style: const TextStyle(fontSize: 12),
                 ),
               ],
-            ),
-      );
-    });
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Повторить'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Сканирование бланка'),
+        title: const Text('Сканер бланков анализов'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            // Окно предварительного просмотра камеры/бланка
             Expanded(
               child: Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.grey[200],
+                  color: Colors.grey[100],
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.teal,
-                    width: 2,
-                    style: BorderStyle.solid,
-                  ),
+                  border: Border.all(color: Colors.teal, width: 2),
                 ),
-                child:
-                    _isProcessing
-                        ? const Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              CircularProgressIndicator(color: Colors.teal),
-                              SizedBox(height: 16),
-                              Text(
-                                'Распознавание таблицы и маркеров...',
-                                style: TextStyle(fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
-                        )
-                        : _scannedImage != null
-                        ? ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: Image.file(_scannedImage!, fit: BoxFit.cover),
-                        )
-                        : const Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.document_scanner_rounded,
-                              size: 70,
-                              color: Colors.teal,
-                            ),
-                            SizedBox(height: 12),
-                            Text(
-                              'Наведите камеру на печатный лист анализа\nили выберите готовый бланк',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.black54,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
+                child: _buildPreview(),
               ),
             ),
-            const SizedBox(height: 20),
-
-            // Кнопки реальной камеры
+            const SizedBox(height: 14),
+            const Text(
+              'Лучший результат получается, когда лист занимает почти весь кадр, '
+              'текст находится в фокусе, а на таблице нет бликов.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 14),
             Row(
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _captureFromCamera,
+                    onPressed: _isProcessing ? null : _captureFromCamera,
                     icon: const Icon(Icons.camera_alt),
-                    label: const Text('Снимок камеры'),
+                    label: const Text('Камера'),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       backgroundColor: Colors.teal,
@@ -166,9 +211,9 @@ class _ScanReportScreenState extends State<ScanReportScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _pickFromGallery,
+                    onPressed: _isProcessing ? null : _pickFromGallery,
                     icon: const Icon(Icons.photo_library),
-                    label: const Text('Из галереи'),
+                    label: const Text('Галерея'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
@@ -176,48 +221,51 @@ class _ScanReportScreenState extends State<ScanReportScreen> {
                 ),
               ],
             ),
-
-            const SizedBox(height: 14),
-            const Divider(),
-            const SizedBox(height: 6),
-
-            // Программный mock для быстрой демонстрации преподавателю
-            const Text(
-              'Программный Mock (для демонстрации):',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed:
-                        () => _processScannedDocument(
-                          null,
-                          isCamera: false,
-                          mockType: 'Бланк ОАК (Инвитро)',
-                        ),
-                    icon: const Icon(Icons.description, size: 18),
-                    label: const Text('Бланк ОАК'),
-                  ),
-                ),
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed:
-                        () => _processScannedDocument(
-                          null,
-                          isCamera: false,
-                          mockType: 'Биохимия (Гемотест)',
-                        ),
-                    icon: const Icon(Icons.description, size: 18),
-                    label: const Text('Биохимия'),
-                  ),
-                ),
-              ],
-            ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPreview() {
+    if (_isProcessing) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Colors.teal),
+            SizedBox(height: 16),
+            Text(
+              'Распознаю текст и таблицу…',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_scannedImage != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Image.file(_scannedImage!, fit: BoxFit.contain),
+      );
+    }
+
+    return const Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.document_scanner_outlined, size: 70, color: Colors.teal),
+        SizedBox(height: 12),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20),
+          child: Text(
+            'Сфотографируйте печатный бланк лабораторного анализа '
+            'или выберите его фотографию из галереи.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.black54, fontSize: 13),
+          ),
+        ),
+      ],
     );
   }
 }

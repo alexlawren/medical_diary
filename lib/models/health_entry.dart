@@ -1,5 +1,6 @@
 /// Слой MODEL: чистые данные о состоянии здоровья
 class HealthEntry {
+  final int? id; // id записи в SQLite после сохранения
   final DateTime date;
   final int pulse;
   final double temperature;
@@ -7,6 +8,7 @@ class HealthEntry {
   final int severity; // Уровень выраженности от 1 до 10
 
   HealthEntry({
+    this.id,
     required this.date,
     required this.pulse,
     required this.temperature,

@@ -1,0 +1,86 @@
+[
+  {
+    "id": "urine_specific_gravity_adult_all",
+    "markerKey": "urine_specific_gravity",
+    "displayName": "Удельный вес",
+    "sex": "all",
+    "minAge": 18,
+    "maxAge": 120,
+    "minValue": 1.003,
+    "maxValue": 1.030,
+    "unit": "",
+    "source": "Учебный диапазон из тестового бланка лабораторной работы"
+  },
+  {
+    "id": "urine_ph_adult_all",
+    "markerKey": "urine_ph",
+    "displayName": "Реакция (pH)",
+    "sex": "all",
+    "minAge": 18,
+    "maxAge": 120,
+    "minValue": 5.0,
+    "maxValue": 7.5,
+    "unit": "",
+    "source": "Учебный диапазон из тестового бланка лабораторной работы"
+  },
+  {
+    "id": "urine_protein_adult_all",
+    "markerKey": "urine_protein",
+    "displayName": "Белок",
+    "sex": "all",
+    "minAge": 18,
+    "maxAge": 120,
+    "minValue": 0.0,
+    "maxValue": 0.1,
+    "unit": "г/л",
+    "source": "Учебный диапазон из тестового бланка лабораторной работы"
+  },
+  {
+    "id": "urine_leukocytes_adult_male",
+    "markerKey": "urine_leukocytes",
+    "displayName": "Лейкоциты",
+    "sex": "male",
+    "minAge": 18,
+    "maxAge": 120,
+    "minValue": 0.0,
+    "maxValue": 5.0,
+    "unit": "в п/зр",
+    "source": "Учебная запись: мужская возрастная группа"
+  },
+  {
+    "id": "urine_leukocytes_adult_female",
+    "markerKey": "urine_leukocytes",
+    "displayName": "Лейкоциты",
+    "sex": "female",
+    "minAge": 18,
+    "maxAge": 120,
+    "minValue": 0.0,
+    "maxValue": 5.0,
+    "unit": "в п/зр",
+    "source": "Учебная запись: женская возрастная группа"
+  },
+  {
+    "id": "hemoglobin_adult_male_demo",
+    "markerKey": "hemoglobin",
+    "displayName": "Гемоглобин",
+    "sex": "male",
+    "minAge": 18,
+    "maxAge": 120,
+    "minValue": 120.0,
+    "maxValue": 160.0,
+    "unit": "г/л",
+    "source": "Демонстрационный диапазон текущего учебного проекта"
+  },
+  {
+    "id": "hemoglobin_adult_female_demo",
+    "markerKey": "hemoglobin",
+    "displayName": "Гемоглобин",
+    "sex": "female",
+    "minAge": 18,
+    "maxAge": 120,
+    "minValue": 120.0,
+    "maxValue": 160.0,
+    "unit": "г/л",
+    "source": "Демонстрационный диапазон текущего учебного проекта"
+  }
+]

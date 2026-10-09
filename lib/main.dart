@@ -1,19 +1,27 @@
 import 'package:flutter/material.dart';
+
 import 'viewmodels/health_viewmodel.dart';
 import 'views/main_health_screen.dart';
 
-void main() {
-  runApp(const MedicalDiaryApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  final healthViewModel = HealthViewModel();
+  await healthViewModel.initialize();
+
+  runApp(MedicalDiaryApp(viewModel: healthViewModel));
 }
 
 class MedicalDiaryApp extends StatelessWidget {
-  const MedicalDiaryApp({super.key});
+  final HealthViewModel viewModel;
+
+  const MedicalDiaryApp({
+    super.key,
+    required this.viewModel,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // Создаем экземпляр ViewModel и передаем его в экран
-    final healthViewModel = HealthViewModel();
-
     return MaterialApp(
       title: 'Медицинский дневник',
       debugShowCheckedModeBanner: false,
@@ -24,7 +32,7 @@ class MedicalDiaryApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: MainHealthScreen(viewModel: healthViewModel),
+      home: MainHealthScreen(viewModel: viewModel),
     );
   }
 }
